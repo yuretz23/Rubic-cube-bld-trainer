@@ -652,7 +652,7 @@ function randomScramble(){
 }
 function setKind(k){kind=k;editing=null;$('edit-form').hidden=true;
   $('tab-edges').setAttribute('aria-pressed',String(k===2));$('tab-corners').setAttribute('aria-pressed',String(k===3));renderNet();renderStory();if(DR.mode===1)drNext();else if(DR.mode===2)drRender();}
-function setMode(m){mode=m;editing=null;$('edit-form').hidden=true;$('data-box').hidden=m!=='edit';
+function setMode(m){mode=m;editing=null;$('edit-form').hidden=true;$('data-box').hidden=m!=='edit'||!DATA_UI();
   $('mode-input').setAttribute('aria-pressed',String(m==='input'));$('mode-edit').setAttribute('aria-pressed',String(m==='edit'));$('edit-toggle').setAttribute('aria-pressed',String(m==='edit'));renderNet();renderStory();}
 function exportText(){}
 const dataText=()=>JSON.stringify({v:1,labels,emoji,pics});
@@ -689,6 +689,8 @@ $('par-yes').onclick=()=>{parity=true;marks.par=null;renderStory();};
 $('par-no').onclick=()=>{parity=false;marks.par=null;renderStory();};
 $('check').onclick=runCheck;
 $('reveal').onclick=()=>{const a=$('answer');a.hidden=!a.hidden;$('reveal').textContent=a.hidden?'Показати відповідь':'Сховати відповідь';if(!a.hidden)renderAnswer();};
+// the transfer block is only for the owner: local file, or the site opened with #data
+const DATA_UI=()=>location.protocol==='file:'||location.hash==='#data';
 $('data-copy').onclick=()=>{const t=dataText();navigator.clipboard.writeText(t).then(()=>{$('io-msg').textContent='Скопійовано ('+Math.round(t.length/1024)+' КБ).';},()=>{$('io').value=t;$('io').select();$('io-msg').textContent='Браузер не дав скопіювати. Текст у полі виділено, скопіюй його вручну (Cmd+C).';});};
 $('io-apply').onclick=()=>{try{const r=applyData($('io').value);$('io').value='';$('io-msg').textContent='Застосовано, зображень: '+r.n+'.'+(r.ok?'':' Браузер не дав зберегти зображення, після перезавантаження вони зникнуть.');}catch(e){$('io-msg').textContent='Не вдалося прочитати дані. Встав текст повністю, без змін.';}};
 if(location.protocol==='file:'||!/claude|anthropic/.test(location.hostname)){$('data-save').hidden=false;
