@@ -242,11 +242,8 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
             <span class="hint" id="dr-session"></span>
             <div class="row">
               <button class="btn" id="dr-skip" type="button" hidden>Не знаю, далі</button>
-              <div class="seg" id="dr-level" role="group" aria-label="Складність" hidden>
-                <button id="dr-easy" type="button" aria-pressed="false">Простіше</button>
-                <button id="dr-hard" type="button" aria-pressed="true">Складніше</button>
-              </div>
               <label class="chk" for="dr-veil"><input type="checkbox" id="dr-veil" checked> ховати схему</label>
+              <label class="chk" for="dr-hide" id="dr-hide-label"><input type="checkbox" id="dr-hide" checked> ховати відповіді одразу</label>
             </div>
           </div>
           <div id="dr-weakbox" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -918,8 +915,8 @@ function drNext(){
     pr.appendChild(box);
     const pool=candidates(kind),same=pool.filter(j=>LOC[j].face===LOC[i].face);
     const rest=shuffle(pool.filter(j=>LOC[j].face!==LOC[i].face)).slice(0,8-same.length);
-    DR.wait=DR.hard;op.classList.toggle('many',DR.hard);
-    (DR.hard?pool:shuffle(same.concat(rest))).forEach(j=>{
+    DR.wait=DR.hard;
+    shuffle(same.concat(rest)).forEach(j=>{
       const b=document.createElement('button');b.type='button';b.className='opt';b.dataset.id=j;tile(b,j);
       b.setAttribute('aria-label',name(j));b.addEventListener('click',()=>drAnswer(j));op.appendChild(b);
     });
@@ -957,12 +954,11 @@ function drMove(){
 function drRender(){
   const on=DR.mode>0;$('dr-body').hidden=!on;$('dr-stop').hidden=!on;$('dr1').hidden=on;$('dr2').hidden=on;
   const waiting=DR.mode===1&&DR.wait;
-  $('dr-skip').hidden=DR.mode!==2;$('dr-options').hidden=DR.mode!==1||waiting;$('dr-know').hidden=!waiting;$('dr-level').hidden=DR.mode!==1;
-  $('dr-easy').setAttribute('aria-pressed',String(!DR.hard));$('dr-hard').setAttribute('aria-pressed',String(DR.hard));
+  $('dr-skip').hidden=DR.mode!==2;$('dr-options').hidden=DR.mode!==1||waiting;$('dr-know').hidden=!waiting;$('dr-hide-label').hidden=DR.mode!==1;$('dr-hide').checked=DR.hard;
   $('net').classList.toggle('veil',on&&$('dr-veil').checked);
   if(!on){$('dr-hint').textContent='Набір (кутові чи ребра) береться з перемикача над схемою. Для другого режиму потрібен підключений Bluetooth-кубик.';return;}
   $('dr-hint').textContent=DR.mode===1
-    ?(DR.hard?'Обведена наклейка стоїть у буфері, менші — решта кольорів кубика. Згадай картинку, натисни «Знаю» (або пробіл) і вибери її зі списку. Час рахується до «Знаю».'
+    ?(DR.hard?'Обведена наклейка стоїть у буфері, менші — решта кольорів кубика. Згадай картинку, натисни «Знаю» (або пробіл) і вибери її серед варіантів. Час рахується до «Знаю».'
       :'Обведена наклейка стоїть у буфері, менші — решта кольорів цього кубика. Вибери його картинку.')
     :'Зроби на кубику обмін буфера з цією наклейкою: сетап, формула, повернення сетапу.';
   const S=DR.sess;$('dr-session').textContent='Правильно '+S.c+' з '+S.n+(S.c?', у середньому '+sec(S.t/S.c):'');
@@ -990,7 +986,7 @@ function drStop(){
 $('dr1').onclick=()=>drStart(1);$('dr2').onclick=()=>drStart(2);$('dr-stop').onclick=drStop;
 function drKnow(){if(DR.mode!==1||!DR.wait)return;DR.wait=false;DR.tRecall=Date.now()-DR.tq;drRender();}
 function drLevel(hard){DR.hard=hard;try{localStorage.setItem('bld-drill-level',hard?'hard':'easy');}catch(e){}if(DR.mode===1)drNext();else drRender();}
-$('dr-know').onclick=drKnow;$('dr-easy').onclick=()=>drLevel(false);$('dr-hard').onclick=()=>drLevel(true);
+$('dr-know').onclick=drKnow;$('dr-hide').addEventListener('change',e=>drLevel(e.target.checked));
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&DR.mode===1&&DR.wait&&!/INPUT|TEXTAREA/.test(e.target.tagName)){e.preventDefault();drKnow();}});
 $('dr-skip').onclick=()=>{if(DR.mode===2&&DR.q)drResult2({ok:false});};
 $('dr-veil').addEventListener('change',drRender);
