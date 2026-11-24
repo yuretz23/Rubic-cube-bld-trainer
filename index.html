@@ -242,6 +242,7 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
             <span class="hint" id="dr-session"></span>
             <div class="row">
               <button class="btn" id="dr-skip" type="button" hidden>Не знаю, далі</button>
+              <label class="chk" for="dr-voice"><input type="checkbox" id="dr-voice"> озвучка</label>
               <label class="chk" for="dr-veil"><input type="checkbox" id="dr-veil" checked> ховати схему</label>
               <label class="chk" for="dr-hide" id="dr-hide-label"><input type="checkbox" id="dr-hide" checked> ховати відповіді одразу</label>
             </div>
@@ -275,7 +276,10 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
       <section class="panel" aria-label="Bluetooth-кубик">
         <div class="row spread">
           <h2>Bluetooth-кубик</h2>
-          <button class="btn primary" id="bt-connect" type="button">Підключити</button>
+          <div class="row">
+            <span class="hint" id="bt-batt" hidden></span>
+            <button class="btn primary" id="bt-connect" type="button">Підключити</button>
+          </div>
         </div>
         <p class="msg" id="bt-status">Не підключено. Потрібен Chrome або Edge.</p>
         <div id="bt-body" hidden style="display:flex;flex-direction:column;gap:12px">
@@ -723,7 +727,43 @@ if(location.protocol==='file:'||!/claude|anthropic/.test(location.hostname)){$('
 })();
 /*BT-START*/
 const BT={dev:null,synced:false,map:null,calib:null,rawU:null,vs:solvedState(),phase:'scramble',pref:[],si:null,since:[],
-  cp:null,steps:[],stage:'edges',edgeSteps:0,tMemo:0,tStart:0,tEnd:0};
+  cp:null,steps:[],stage:'edges',edgeSteps:0,tMemo:0,tStart:0,tEnd:0,decRaw:null,okN:0,badN:0,trust:'unknown',TR:null};
+try{if(localStorage.getItem('bld-bt-decode')==='ok')BT.trust='ok';}catch(e){}
+// Giiker packet layout and facelet tables follow the csTimer implementation (GPLv3)
+const SVC2='0000aaaa-0000-1000-8000-00805f9b34fb',CHR_R='0000aaab-0000-1000-8000-00805f9b34fb',CHR_W='0000aaac-0000-1000-8000-00805f9b34fb';
+const CF=[[26,15,29],[20,8,9],[18,38,6],[24,27,44],[51,35,17],[45,11,2],[47,0,36],[53,42,33]];
+const EF=[[25,28],[23,12],[19,7],[21,41],[32,16],[5,10],[3,37],[30,43],[52,34],[48,14],[46,1],[50,39]];
+const COM=[-1,1,-1,1,1,-1,1,-1];
+// facelet index (URFDLB, 9 per face, row by row) -> sticker id in the cube's own frame
+const FLID=[];for(let i=0;i<54;i++){const f='URFDLB'[Math.floor(i/9)],r=Math.floor(i%9/3),c=i%3;
+  const p={U:[c-1,1,r-1],R:[1,1-r,1-c],F:[c-1,1-r,1],D:[c-1,-1,1-r],L:[-1,1-r,c-1],B:[1-c,1-r,-1]}[f];FLID.push(lid(p,AX[f]));}
+function btBytes(v){
+  if(!v||v.byteLength<18)return null;const d=[];for(let i=0;i<v.byteLength;i++)d.push(v.getUint8(i));
+  if(d.length>=20&&d[18]===0xA7){const k1=d[19]>>4&15,k2=d[19]&15;for(let i=0;i<18;i++)d[i]=(d[i]+KEY[i+k1]+KEY[i+k2])&255;}
+  return d;
+}
+// full cube state from one packet, in the cube's own frame; null if the packet does not look valid
+function btDecode(d){
+  const hx=[];for(let i=0;i<16;i++)hx.push(d[i]>>4&15,d[i]&15);
+  const st=solvedState();
+  for(let c=0;c<8;c++){
+    const j=hx[c]-1,v=hx[c+8];if(j<0||j>7||v<1||v>3)return null;const o=(3+v*COM[c])%3;
+    for(let n=0;n<3;n++)st[FLID[CF[c][(n+o)%3]]]=FLID[CF[j][n]];
+  }
+  for(let e=0;e<12;e++){
+    const j=hx[e+16]-1;if(j<0||j>11)return null;const o=(hx[28+(e>>2)]>>(3-(e&3)))&1;
+    for(let n=0;n<2;n++)st[FLID[EF[e][(n+o)%2]]]=FLID[EF[j][n]];
+  }
+  return new Set(Object.values(st)).size===IDS.length?st:null;
+}
+function btFrame(){
+  if(!BT.map){BT.TR=null;return;}
+  const inv={};Object.keys(BT.map).forEach(k=>{inv[k]=BT.map[k];});
+  const ax=[AX[inv.R],AX[inv.U],AX[inv.F]],rv=v=>[0,1,2].map(i=>v[0]*ax[0][i]+v[1]*ax[1][i]+v[2]*ax[2][i]);
+  BT.TR={};IDS.forEach(i=>{BT.TR[i]=lid(rv(LOC[i].p),rv(LOC[i].n));});
+}
+const btUser=st=>{if(!BT.TR)btFrame();const o={};IDS.forEach(i=>{o[BT.TR[i]]=BT.TR[st[i]];});return o;};
+const btTrusted=()=>BT.trust==='ok'&&BT.decRaw&&BT.map;
 const SVC='0000aadb-0000-1000-8000-00805f9b34fb',CHR='0000aadc-0000-1000-8000-00805f9b34fb',RAW='BDLURF';
 const KEY=[176,81,104,224,86,137,237,119,38,26,193,161,210,126,150,81,93,13,236,249,89,235,88,24,113,81,214,131,130,199,2,169,39,165,171,41];
 const OPP={U:'D',D:'U',L:'R',R:'L',F:'B',B:'F'};
@@ -732,6 +772,7 @@ const SOLVED=solvedState(),UF_U=BYKEY[norm('UF')],UBR_U=BYKEY[norm('UBR')];
 const inv=m=>m.length===1?m+"'":(m[1]==="'"?m[0]:m);
 const fmtT=ms=>{const s=Math.round(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 try{const m=JSON.parse(localStorage.getItem('bld-bt-map')||'null');if(m&&m.U)BT.map=m;}catch(e){}
+// BT.map: letter the cube reports -> letter in the user's holding position
 const btStatus=(t,cls)=>{const el=$('bt-status');el.textContent=t;el.className='msg '+(cls||'');};
 
 function btStep(st,kind,t){const s={...st};swapWith(s,kind,t);swapWith(s,kind===2?3:2,kind===2?UBR_U:UF_U);return s;}
@@ -809,8 +850,9 @@ function btOnScramble(){
   if(BT.dev&&BT.synced&&!BT.calib){BT.phase='scramble';btScramblePhase(null);}
   btRender();
 }
-function btMove(m){
-  BT.vs=applyMove(BT.vs,m);
+function btMove(m,dec){
+  BT.vs=dec||applyMove(BT.vs,m);
+  if(dec&&!BT.synced){BT.synced=true;BT.phase='scramble';BT.si=null;BT.since=[];}
   if(DR.mode===2){drMove();btRender();return;}
   if(!BT.synced){btStatus('Склади кубик і натисни «Кубик складений».','');btRender();return;}
   if(BT.phase==='memo')btStartSolve();
@@ -825,7 +867,7 @@ function btMove(m){
   }else btScramblePhase(m);
   btRender();
 }
-function btRaw(face,amt){
+function btRaw(face,amt,dec){
   const raw=RAW[face-1],suf=amt===1?'':(amt===3?"'":'2');
   if(BT.calib){
     if(amt!==1){btStatus('Потрібен поворот за годинниковою стрілкою, спробуй ще раз.','bad');return;}
@@ -834,32 +876,56 @@ function btRaw(face,amt){
     const rawR=faceOf(cross(AX[BT.rawU],AX[raw]));
     BT.map={[BT.rawU]:'U',[OPP[BT.rawU]]:'D',[raw]:'F',[OPP[raw]]:'B',[rawR]:'R',[OPP[rawR]]:'L'};
     try{localStorage.setItem('bld-bt-map',JSON.stringify(BT.map));}catch(e){}
-    BT.calib=null;BT.vs=applyMove(applyMove(BT.vs,'U'),'F');
-    btStatus(BT.synced?'Калібровано. Поверни ці дві грані назад (F\' U\') або склади кубик.':'Калібровано. Склади кубик і натисни «Кубик складений».','ok');
+    BT.calib=null;btFrame();
+    if(btTrusted()){BT.vs=btUser(BT.decRaw);BT.synced=true;BT.phase='scramble';BT.si=null;BT.since=[];btScramblePhase(null);btRender();return;}
+    BT.vs=applyMove(applyMove(BT.vs,'U'),'F');
+    btStatus(BT.synced?'Калібровано. Поверни ці дві грані назад (F\' U\') або склади кубик.':'Калібровано. Покрути кубик ще трохи, стан підхопиться сам. Якщо ні, склади його і натисни «Кубик складений».','ok');
     if(BT.synced&&BT.phase==='scramble')BT.si=null;
     btRender();return;
   }
   if(!BT.map){btCalib();return;}
-  btMove(BT.map[raw]+suf);
+  btMove(BT.map[raw]+suf,BT.trust==='ok'&&dec?btUser(dec):null);
 }
 function btNotify(e){
-  const v=e.target.value;if(!v||v.byteLength<18)return;const d=[];for(let i=0;i<v.byteLength;i++)d.push(v.getUint8(i));
-  if(d.length>=20&&d[18]===0xA7){const k1=d[19]>>4&15,k2=d[19]&15;for(let i=0;i<18;i++)d[i]=(d[i]+KEY[i+k1]+KEY[i+k2])&255;}
+  const d=btBytes(e.target.value);if(!d)return;
   const f=d[16]>>4&15,a=d[16]&15;if(f<1||f>6)return;
-  btRaw(f,a===1?1:(a===3?3:2));
+  const amt=a===1?1:(a===3?3:2),dec=btDecode(d);
+  // check the decoded state against the reported move before relying on it
+  if(dec&&BT.decRaw){if(eq(applyMove(BT.decRaw,RAW[f-1]+(amt===1?'':(amt===3?"'":'2'))),dec))BT.okN++;else BT.badN++;}
+  if(dec)BT.decRaw=dec;
+  if(BT.trust!=='ok'&&BT.okN>=3&&BT.badN===0){BT.trust='ok';try{localStorage.setItem('bld-bt-decode','ok');}catch(e2){}}
+  else if(BT.trust==='unknown'&&BT.badN>=2&&BT.okN===0){BT.trust='bad';if(!BT.synced)btStatus('Стан кубика напряму прочитати не вдалося, працюю за ходами. Склади кубик і натисни «Кубик складений».','bad');}
+  btRaw(f,amt,dec);
+}
+async function btBattery(gatt){
+  try{
+    const s=await gatt.getPrimaryService(SVC2),rd=await s.getCharacteristic(CHR_R),wr=await s.getCharacteristic(CHR_W);
+    await rd.startNotifications();
+    const lv=await new Promise((res,rej)=>{
+      const t=setTimeout(()=>rej(new Error('timeout')),4000);
+      rd.addEventListener('characteristicvaluechanged',e=>{clearTimeout(t);res(e.target.value.getUint8(1));},{once:true});
+      wr.writeValue(new Uint8Array([0xb5])).catch(rej);
+    });
+    try{await rd.stopNotifications();}catch(e){}
+    if(lv>=0&&lv<=100){$('bt-batt').textContent='Заряд '+lv+'%';$('bt-batt').hidden=false;}
+  }catch(e){$('bt-batt').hidden=true;}
 }
 function btCalib(){BT.calib='U';BT.rawU=null;btStatus('Калібрування. Тримай кубик як завжди й поверни верхню (жовту) грань за годинниковою стрілкою.','');}
 async function btConnect(){
   if(!navigator.bluetooth){btStatus('Цей браузер не підтримує Web Bluetooth. Відкрий тренажер у Chrome або Edge.','bad');return;}
   try{
     btStatus('Шукаю кубик…','');
-    const dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'Gi'},{namePrefix:'Mi Smart'},{namePrefix:'Hi-'}],optionalServices:[SVC]});
+    const dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'Gi'},{namePrefix:'Mi Smart'},{namePrefix:'Hi-'}],optionalServices:[SVC,SVC2]});
     dev.addEventListener('gattserverdisconnected',()=>{BT.dev=null;$('bt-connect').textContent='Підключити';btStatus("З'єднання з кубиком розірвано.",'bad');});
     const gatt=await dev.gatt.connect(),svc=await gatt.getPrimaryService(SVC),ch=await svc.getCharacteristic(CHR);
+    BT.decRaw=null;BT.okN=0;BT.badN=0;
+    try{const d0=btBytes(await ch.readValue()),s0=d0&&btDecode(d0);if(s0)BT.decRaw=s0;}catch(e){}
     ch.addEventListener('characteristicvaluechanged',btNotify);await ch.startNotifications();
     BT.dev=dev;BT.synced=false;$('bt-body').hidden=false;$('bt-connect').textContent='Підключено';
-    if(BT.map)btStatus('Підключено: '+(dev.name||'кубик')+'. Склади кубик і натисни «Кубик складений».','ok');else btCalib();
-    btRender();
+    if(!BT.map)btCalib();
+    else if(btTrusted()){BT.vs=btUser(BT.decRaw);BT.synced=true;BT.phase='scramble';BT.si=null;BT.since=[];btScramblePhase(null);}
+    else btStatus('Підключено: '+(dev.name||'кубик')+'. Покрути кубик, стан підхопиться сам після кількох поворотів. Якщо ні, склади його і натисни «Кубик складений».','ok');
+    btRender();btBattery(gatt);
   }catch(err){btStatus('Не вдалося підключитись: '+(err&&err.message?err.message:err),'bad');}
 }
 function btRender(){
@@ -867,7 +933,7 @@ function btRender(){
   for(const c of CELLS){const e=document.createElement('i');e.className='f-'+LOC[BT.vs[c.id]].face;e.style.gridRow=c.row;e.style.gridColumn=c.col;m.appendChild(e);}
   const on=BT.dev&&BT.synced&&(BT.phase==='scramble'||BT.phase==='memo')&&BT.si!==null;
   [...$('scramble').querySelectorAll('span')].forEach((s,k)=>s.classList.toggle('done',!!on&&k<BT.si));
-  $('bt-finish').hidden=BT.phase!=='solve';
+  $('bt-finish').hidden=BT.phase!=='solve';$('bt-sync').hidden=BT.trust==='ok';
   const ol=$('bt-steps');ol.textContent='';
   BT.steps.forEach((s,k)=>{
     const li=document.createElement('li');li.className=s.ok?'ok':'bad';
@@ -888,6 +954,21 @@ const DR={mode:0,q:null,kind:2,tq:0,base:null,exp:null,moves:0,last:null,sess:{n
 try{if(localStorage.getItem('bld-drill-level')==='easy')DR.hard=false;}catch(e){}
 let DST={1:{},2:{}};
 try{const s=JSON.parse(localStorage.getItem('bld-drill-v1')||'null');if(s&&s[1]&&s[2])DST=s;}catch(e){}
+const VOX={on:false,ctx:null};
+try{VOX.on=localStorage.getItem('bld-voice')==='1';}catch(e){}
+const voxVoice=()=>{try{return speechSynthesis.getVoices().find(v=>/^uk/i.test(v.lang))||null;}catch(e){return null;}};
+const spoken=i=>labels[LOC[i].key]||code(i).split('').join(' ');
+function say(text,flush){
+  if(!VOX.on||!window.speechSynthesis)return;
+  try{if(flush)speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text),v=voxVoice();if(v)u.voice=v;u.lang='uk-UA';u.rate=1.05;speechSynthesis.speak(u);}catch(e){}
+}
+function beep(ok){
+  if(!VOX.on)return;
+  try{VOX.ctx=VOX.ctx||new (window.AudioContext||window.webkitAudioContext)();
+    const c=VOX.ctx,o=c.createOscillator(),g=c.createGain(),len=ok?.14:.4;
+    o.type=ok?'sine':'square';o.frequency.value=ok?880:200;g.gain.setValueAtTime(ok?.2:.12,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+len);
+    o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+len+.02);}catch(e){}
+}
 const drSave=()=>{try{localStorage.setItem('bld-drill-v1',JSON.stringify(DST));}catch(e){}};
 const drStat=(mode,i)=>DST[mode][LOC[i].key]||(DST[mode][LOC[i].key]={n:0,e:0,c:0,t:0,m:0});
 const drRef=mode=>mode===1?2000:15000;
@@ -926,7 +1007,7 @@ function drNext(){
     const box=document.createElement('div');box.className='target';
     const b=document.createElement('div');b.className='opt big';tile(b,i);box.appendChild(b);
     const t=document.createElement('strong');t.textContent=name(i);box.appendChild(t);pr.appendChild(box);
-    DR.exp=btStep(DR.base,DR.kind,i);
+    DR.exp=btStep(DR.base,DR.kind,i);say(spoken(i),false);
   }
   drRender();
 }
@@ -937,12 +1018,14 @@ function drAnswer(j){
   const dt=DR.hard?DR.tRecall:Date.now()-DR.tq,s=drStat(1,DR.q),ok=j===DR.q;s.n++;if(ok){s.c++;s.t+=dt;}else s.e++;
   [...$('dr-options').children].forEach(b=>{if(b.dataset.id===DR.q)b.classList.add('ok');else if(b.dataset.id===j)b.classList.add('bad');});
   drFeedback(ok?'Правильно, '+sec(dt):'Ні. Правильна відповідь: «'+name(DR.q)+'»',ok);
-  drCount(ok,dt);drRender();DR.timer=setTimeout(drNext,ok?350:1700);
+  beep(ok);drCount(ok,dt);drRender();DR.timer=setTimeout(drNext,ok?350:1700);
 }
 function drResult2(res){
   const dt=Date.now()-DR.tq,s=drStat(2,DR.q);s.n++;
   if(res.ok){s.c++;s.t+=dt;s.m+=DR.moves;drFeedback('«'+name(DR.q)+'»: правильно, '+sec(dt)+', ходів: '+DR.moves,true);}
   else{s.e++;drFeedback(res.did?'Зроблено обмін з «'+name(res.did)+'» ('+code(res.did)+'), а треба було з «'+name(DR.q)+'» ('+code(DR.q)+').':'Пропущено «'+name(DR.q)+'». Це наклейка '+code(DR.q)+'.',false);}
+  beep(res.ok);
+  if(!res.ok)say(res.did?'Ні. Це було '+spoken(res.did):'Пропущено',true);else if(VOX.on)try{speechSynthesis.cancel();}catch(e){}
   drCount(res.ok,dt);DR.base={...BT.vs};drNext();
 }
 // called after every move of the Bluetooth cube while the second drill runs
@@ -956,13 +1039,13 @@ function drMove(){
 function drRender(){
   const on=DR.mode>0;$('dr-body').hidden=!on;$('dr-stop').hidden=!on;$('dr1').hidden=on;$('dr2').hidden=on;
   const waiting=DR.mode===1&&DR.wait;
-  $('dr-skip').hidden=DR.mode!==2;$('dr-options').hidden=DR.mode!==1||waiting;$('dr-know').hidden=!waiting;$('dr-hide-label').hidden=DR.mode!==1;$('dr-hide').checked=DR.hard;
+  $('dr-skip').hidden=DR.mode!==2;$('dr-options').hidden=DR.mode!==1||waiting;$('dr-know').hidden=!waiting;$('dr-hide-label').hidden=DR.mode!==1;$('dr-hide').checked=DR.hard;$('dr-voice').checked=VOX.on;
   $('net').classList.toggle('veil',on&&$('dr-veil').checked);
   if(!on){$('dr-hint').textContent='Набір (кутові чи ребра) береться з перемикача над схемою. Для другого режиму потрібен підключений Bluetooth-кубик.';return;}
   $('dr-hint').textContent=DR.mode===1
     ?(DR.hard?'Обведена наклейка стоїть у буфері, менші — решта кольорів кубика. Згадай картинку, натисни «Знаю» (або пробіл) і вибери її серед варіантів. Час рахується до «Знаю».'
       :'Обведена наклейка стоїть у буфері, менші — решта кольорів цього кубика. Вибери його картинку.')
-    :'Зроби на кубику обмін буфера з цією наклейкою: сетап, формула, повернення сетапу.';
+    :'Зроби на кубику обмін буфера з цією наклейкою: сетап, формула, повернення сетапу.'+(VOX.on?' З озвучкою можна із заплющеними очима: пробіл повторює назву.':'');
   const S=DR.sess;$('dr-session').textContent='Правильно '+S.c+' з '+S.n+(S.c?', у середньому '+sec(S.t/S.c):'');
   const rows=candidates(kind).map(i=>({i,s:DST[DR.mode][LOC[i].key]})).filter(x=>x.s&&x.s.n).map(x=>({...x,sc:drScore(DR.mode,x.s)})).sort((a,b)=>b.sc-a.sc).slice(0,5);
   $('dr-weakbox').hidden=!rows.length;const w=$('dr-weak');w.textContent='';
@@ -989,7 +1072,21 @@ $('dr1').onclick=()=>drStart(1);$('dr2').onclick=()=>drStart(2);$('dr-stop').onc
 function drKnow(){if(DR.mode!==1||!DR.wait)return;DR.wait=false;DR.tRecall=Date.now()-DR.tq;drRender();}
 function drLevel(hard){DR.hard=hard;try{localStorage.setItem('bld-drill-level',hard?'hard':'easy');}catch(e){}if(DR.mode===1)drNext();else drRender();}
 $('dr-know').onclick=drKnow;$('dr-hide').addEventListener('change',e=>drLevel(e.target.checked));
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&DR.mode===1&&DR.wait&&!/INPUT|TEXTAREA/.test(e.target.tagName)){e.preventDefault();drKnow();}});
+document.addEventListener('keydown',e=>{
+  if(e.code!=='Space'||/INPUT|TEXTAREA/.test(e.target.tagName))return;
+  if(DR.mode===1&&DR.wait){e.preventDefault();drKnow();}
+  else if(DR.mode===2&&DR.q&&VOX.on){e.preventDefault();say(spoken(DR.q),true);}
+});
+$('dr-voice').addEventListener('change',e=>{
+  VOX.on=e.target.checked;try{localStorage.setItem('bld-voice',VOX.on?'1':'0');}catch(e2){}
+  if(VOX.on){
+    if(!window.speechSynthesis)drFeedback('Цей браузер не вміє озвучувати текст, будуть тільки сигнали.',false);
+    else if(!voxVoice())drFeedback('Українського голосу в системі не знайдено, назви можуть читатись з акцентом або не читатись. Його можна додати в налаштуваннях голосів macOS.',false);
+    beep(true);if(DR.mode===2&&DR.q)say(spoken(DR.q),true);
+  }else try{speechSynthesis.cancel();}catch(e2){}
+  drRender();
+});
+try{speechSynthesis.getVoices();}catch(e){}
 $('dr-skip').onclick=()=>{if(DR.mode===2&&DR.q)drResult2({ok:false});};
 $('dr-veil').addEventListener('change',drRender);
 $('dr-reset').onclick=()=>{candidates(kind).forEach(i=>{delete DST[DR.mode][LOC[i].key];});drSave();drRender();};
