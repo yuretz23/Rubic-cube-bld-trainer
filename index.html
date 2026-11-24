@@ -148,6 +148,9 @@ button.opt:hover{border-color:var(--accent)}
 .opt .cem{font-size:40px;line-height:1}
 .opt.ok{border-color:var(--good);background:var(--good-bg)}
 .opt.bad{border-color:var(--bad);background:var(--bad-bg)}
+.opts.many{grid-template-columns:repeat(6,minmax(0,1fr));max-width:none;gap:6px}
+.opts.many .opt{padding:4px;border-radius:8px}
+.opts.many .opt .cem{font-size:30px}
 .opt.big{width:120px;flex:none}
 .opt.big .cem{font-size:64px}
 .piece{display:flex;align-items:flex-end;gap:10px}
@@ -229,13 +232,20 @@ label.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:va
         </div>
         <p class="hint" id="dr-hint">Набір (кутові чи ребра) береться з перемикача над схемою. Для другого режиму потрібен підключений Bluetooth-кубик.</p>
         <div id="dr-body" hidden style="display:flex;flex-direction:column;gap:12px">
-          <div id="dr-prompt"></div>
+          <div class="row" style="gap:20px">
+            <div id="dr-prompt"></div>
+            <button class="btn primary" id="dr-know" type="button" hidden>Знаю</button>
+          </div>
           <div class="opts" id="dr-options"></div>
           <p class="msg" id="dr-feedback" hidden></p>
           <div class="row spread">
             <span class="hint" id="dr-session"></span>
             <div class="row">
               <button class="btn" id="dr-skip" type="button" hidden>Не знаю, далі</button>
+              <div class="seg" id="dr-level" role="group" aria-label="Складність" hidden>
+                <button id="dr-easy" type="button" aria-pressed="false">Простіше</button>
+                <button id="dr-hard" type="button" aria-pressed="true">Складніше</button>
+              </div>
               <label class="chk" for="dr-veil"><input type="checkbox" id="dr-veil" checked> ховати схему</label>
             </div>
           </div>
@@ -875,7 +885,8 @@ $('bt-calib').onclick=()=>{btCalib();};
 $('bt-finish').onclick=btFinish;
 /*BT-END*/
 /*DRILL-START*/
-const DR={mode:0,q:null,kind:2,tq:0,base:null,exp:null,moves:0,last:null,sess:{n:0,c:0,t:0},lock:false,timer:null};
+const DR={mode:0,q:null,kind:2,tq:0,base:null,exp:null,moves:0,last:null,sess:{n:0,c:0,t:0},lock:false,timer:null,hard:true,wait:false,tRecall:0};
+try{if(localStorage.getItem('bld-drill-level')==='easy')DR.hard=false;}catch(e){}
 let DST={1:{},2:{}};
 try{const s=JSON.parse(localStorage.getItem('bld-drill-v1')||'null');if(s&&s[1]&&s[2])DST=s;}catch(e){}
 const drSave=()=>{try{localStorage.setItem('bld-drill-v1',JSON.stringify(DST));}catch(e){}};
@@ -907,7 +918,8 @@ function drNext(){
     pr.appendChild(box);
     const pool=candidates(kind),same=pool.filter(j=>LOC[j].face===LOC[i].face);
     const rest=shuffle(pool.filter(j=>LOC[j].face!==LOC[i].face)).slice(0,8-same.length);
-    shuffle(same.concat(rest)).forEach(j=>{
+    DR.wait=DR.hard;op.classList.toggle('many',DR.hard);
+    (DR.hard?pool:shuffle(same.concat(rest))).forEach(j=>{
       const b=document.createElement('button');b.type='button';b.className='opt';b.dataset.id=j;tile(b,j);
       b.setAttribute('aria-label',name(j));b.addEventListener('click',()=>drAnswer(j));op.appendChild(b);
     });
@@ -923,7 +935,7 @@ function drFeedback(text,ok){const f=$('dr-feedback');f.hidden=false;f.textConte
 function drCount(ok,dt){DR.sess.n++;if(ok){DR.sess.c++;DR.sess.t+=dt;}drSave();}
 function drAnswer(j){
   if(DR.lock||DR.mode!==1)return;DR.lock=true;
-  const dt=Date.now()-DR.tq,s=drStat(1,DR.q),ok=j===DR.q;s.n++;if(ok){s.c++;s.t+=dt;}else s.e++;
+  const dt=DR.hard?DR.tRecall:Date.now()-DR.tq,s=drStat(1,DR.q),ok=j===DR.q;s.n++;if(ok){s.c++;s.t+=dt;}else s.e++;
   [...$('dr-options').children].forEach(b=>{if(b.dataset.id===DR.q)b.classList.add('ok');else if(b.dataset.id===j)b.classList.add('bad');});
   drFeedback(ok?'Правильно, '+sec(dt):'Ні. Правильна відповідь: «'+name(DR.q)+'»',ok);
   drCount(ok,dt);drRender();DR.timer=setTimeout(drNext,ok?350:1700);
@@ -944,11 +956,14 @@ function drMove(){
 }
 function drRender(){
   const on=DR.mode>0;$('dr-body').hidden=!on;$('dr-stop').hidden=!on;$('dr1').hidden=on;$('dr2').hidden=on;
-  $('dr-skip').hidden=DR.mode!==2;$('dr-options').hidden=DR.mode!==1;
+  const waiting=DR.mode===1&&DR.wait;
+  $('dr-skip').hidden=DR.mode!==2;$('dr-options').hidden=DR.mode!==1||waiting;$('dr-know').hidden=!waiting;$('dr-level').hidden=DR.mode!==1;
+  $('dr-easy').setAttribute('aria-pressed',String(!DR.hard));$('dr-hard').setAttribute('aria-pressed',String(DR.hard));
   $('net').classList.toggle('veil',on&&$('dr-veil').checked);
   if(!on){$('dr-hint').textContent='Набір (кутові чи ребра) береться з перемикача над схемою. Для другого режиму потрібен підключений Bluetooth-кубик.';return;}
   $('dr-hint').textContent=DR.mode===1
-    ?'Обведена наклейка стоїть у буфері, менші — решта кольорів цього кубика. Вибери його картинку.'
+    ?(DR.hard?'Обведена наклейка стоїть у буфері, менші — решта кольорів кубика. Згадай картинку, натисни «Знаю» (або пробіл) і вибери її зі списку. Час рахується до «Знаю».'
+      :'Обведена наклейка стоїть у буфері, менші — решта кольорів цього кубика. Вибери його картинку.')
     :'Зроби на кубику обмін буфера з цією наклейкою: сетап, формула, повернення сетапу.';
   const S=DR.sess;$('dr-session').textContent='Правильно '+S.c+' з '+S.n+(S.c?', у середньому '+sec(S.t/S.c):'');
   const rows=candidates(kind).map(i=>({i,s:DST[DR.mode][LOC[i].key]})).filter(x=>x.s&&x.s.n).map(x=>({...x,sc:drScore(DR.mode,x.s)})).sort((a,b)=>b.sc-a.sc).slice(0,5);
@@ -966,13 +981,17 @@ function drStart(mode){
     if(!BT.map||BT.calib){$('dr-hint').textContent='Спершу закінчи калібрування кубика.';return;}
     DR.base={...BT.vs};BT.phase='done';$('bt-report').hidden=true;btStatus('Іде тренування «Картинка → обмін». Кубик не обов\'язково має бути складений.','');
   }
-  DR.mode=mode;DR.sess={n:0,c:0,t:0};DR.last=null;$('dr-feedback').hidden=true;drNext();
+  DR.mode=mode;DR.wait=false;DR.sess={n:0,c:0,t:0};DR.last=null;$('dr-feedback').hidden=true;drNext();
 }
 function drStop(){
   clearTimeout(DR.timer);const was=DR.mode;DR.mode=0;DR.q=null;drRender();
   if(was===2&&BT.dev)btStatus(BT.synced?'Тренування завершено. Склади кубик, і можна буде скрамблити.':'Тренування завершено. Склади кубик і натисни «Кубик складений».','');
 }
 $('dr1').onclick=()=>drStart(1);$('dr2').onclick=()=>drStart(2);$('dr-stop').onclick=drStop;
+function drKnow(){if(DR.mode!==1||!DR.wait)return;DR.wait=false;DR.tRecall=Date.now()-DR.tq;drRender();}
+function drLevel(hard){DR.hard=hard;try{localStorage.setItem('bld-drill-level',hard?'hard':'easy');}catch(e){}if(DR.mode===1)drNext();else drRender();}
+$('dr-know').onclick=drKnow;$('dr-easy').onclick=()=>drLevel(false);$('dr-hard').onclick=()=>drLevel(true);
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&DR.mode===1&&DR.wait&&!/INPUT|TEXTAREA/.test(e.target.tagName)){e.preventDefault();drKnow();}});
 $('dr-skip').onclick=()=>{if(DR.mode===2&&DR.q)drResult2({ok:false});};
 $('dr-veil').addEventListener('change',drRender);
 $('dr-reset').onclick=()=>{candidates(kind).forEach(i=>{delete DST[DR.mode][LOC[i].key];});drSave();drRender();};
